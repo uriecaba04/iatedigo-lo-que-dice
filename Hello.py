@@ -1,51 +1,79 @@
-# Copyright (c) Streamlit Inc. (2018-2022) Snowflake Inc. (2022)
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import streamlit as st
-from streamlit.logger import get_logger
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chat_models import ChatOpenAI
+from langchain.chains.question_answering import load_qa_chain
+import os
 
-LOGGER = get_logger(__name__)
 
+st.header("IA Te digo lo que dice tu documento")
+st.write("¡Hola! Esta es una app con la que puedes interactuar con tu Documento")
+OPENAI_API_KEY=st.text_input('Open AI API key', type="password")
+pdf_obj=st.file_uploader("Carga tu documento", type="pdf")
 
-def run():
-    st.set_page_config(
-        page_title="Hello",
-        page_icon="👋",
+def createEmbeding(pdf):
+    pdf_reader = PdfReader(pdf)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+
+    text_splitter = RecursiveCharacterTextSplitter(
+        chunk_size=800,
+        chunk_overlap=100,
+        length_function=len
     )
+    chunks = text_splitter.split_text(text)
+    embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+    knowledge_base = FAISS.from_texts(chunks, embeddings)
+    return knowledge_base
 
-    st.write("# Bienvenido compa! 👋")
-
-    st.sidebar.success("Select a demo above.")
-
-    st.markdown(
-        """
-        Streamlit is an open-source app framework built specifically for
-        Machine Learning and Data Science projects.
-        **👈 Select a demo from the sidebar** to see some examples
-        of what Streamlit can do!
-        ### Want to learn more?
-        - Check out [streamlit.io](https://streamlit.io)
-        - Jump into our [documentation](https://docs.streamlit.io)
-        - Ask a question in our [community
-          forums](https://discuss.streamlit.io)
-        ### See more complex demos
-        - Use a neural net to [analyze the Udacity Self-driving Car Image
-          Dataset](https://github.com/streamlit/demo-self-driving)
-        - Explore a [New York City rideshare dataset](https://github.com/streamlit/demo-uber-nyc-pickups)
-    """
-    )
+if(pdf_obj):
+    knowledge_base = createEmbeding(pdf_obj)
+    user_question=st.text_input("Ingresa tu pregunta")
+    if(user_question):
+        os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+        docs = knowledge_base.similarity_search(user_question, 18)
+        # Utilizar los parrafos similares para darle contexto a ChatGPT
+        llm = ChatOpenAI(model_name='gpt-3.5-turbo')
+        chain = load_qa_chain(llm, chain_type="stuff")
+        respuesta = chain.run(input_documents=docs, question=user_question)
+        st.write(respuesta)
+        #st.write(docs)
 
 
-if __name__ == "__main__":
-    run()
+
+
+hide_streamlit_style = """
+            <style>
+            #MainMenu {visibility: hidden;}
+            header {visibility: hidden;}
+            footer {visibility: visible;}
+            footer:after{
+             content: 'Desarrollado Por Uriel Camargo';
+             display:block;
+             position:relative;
+             color:tomato;
+             
+            }
+            .appview-container{
+              visibility: visible;
+            }
+            </style>
+            """
+hide_streamlit_style = """
+            <style>
+          
+            footer {visibility: visible;}
+            footer:after{
+             content: 'Desarrollado Por Uriel Camargo';
+             display:block;
+             position:relative;
+             color:tomato;
+             
+            }
+            
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
